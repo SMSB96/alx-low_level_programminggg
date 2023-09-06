@@ -2,70 +2,108 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include "main.h"
 
 #define BUFFER_SIZE 1024
 
+char *create_buffer(void);
+void close_file(int fd);
+void copy_file(int from, int to, char *buffer);
+
 /**
- * main - Copies the content of a file to another file
- * @argc: The number of command-line arguments
- * @argv: An array containing the command-line arguments
+ * main - Entry point of the file copy program.
+ * @argc: The number of arguments supplied to the program.
+ * @argv: An array of pointers to the arguments.
  *
- * Return: 0 on success, 97 on incorrect number of arguments, 98 on read error,
- * 99 on write error, 100 on close error
+ * Return: 0 on success, 97 on incorrect number of arguments,
+ *         98 on read error, 99 on write error, 100 on close error.
  */
 int main(int argc, char *argv[])
 {
-int fd_from, fd_to, r, w;
-char buffer[BUFFER_SIZE];
+	int from, to;
+	char *buffer;
 
-if (argc != 3)
-{
-dprintf(STDERR_FILENO, "Usage: %s file_from file_to\n", argv[0]);
-exit(97);
+	if (argc != 3)
+	{
+		dprintf(STDERR_FILENO, "Usage: cp file_from file_to\n");
+		exit(97);
+	}
+
+	buffer = create_buffer();
+	from = open(argv[1], O_RDONLY);
+	to = open(argv[2], O_CREAT | O_WRONLY | O_TRUNC, 0664);
+
+	if (from == -1 || to == -1)
+	{
+		dprintf(STDERR_FILENO, "Error: Can't open file\n");
+		free(buffer);
+		close_file(from);
+		close_file(to);
+		exit(98);
+	}
+
+	copy_file(from, to, buffer);
+
+	free(buffer);
+	close_file(from);
+	close_file(to);
+
+	return (0);
 }
 
-fd_from = open(argv[1], O_RDONLY);
-if (fd_from == -1)
+/**
+ * create_buffer - Allocates a buffer for reading/writing.
+ *
+ * Return: A pointer to the newly-allocated buffer.
+ */
+char *create_buffer(void)
 {
-dprintf(STDERR_FILENO, "Error: Can't read from file %s\n", argv[1]);
-exit(98);
+	char *buffer = malloc(BUFFER_SIZE);
+
+	if (buffer == NULL)
+	{
+		dprintf(STDERR_FILENO, "Error: Memory allocation failed\n");
+		exit(99);
+	}
+	return (buffer);
 }
 
-fd_to = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC, 0664);
-if (fd_to == -1)
+/**
+ * close_file - Closes a file descriptor.
+ * @fd: The file descriptor to be closed.
+ */
+void close_file(int fd)
 {
-dprintf(STDERR_FILENO, "Error: Can't write to %s\n", argv[2]);
-close(fd_from);
-exit(99);
+	if (close(fd) == -1)
+	{
+		dprintf(STDERR_FILENO, "Error: Can't close fd %d\n", fd);
+		exit(100);
+	}
 }
-while ((r = read(fd_from, buffer, BUFFER_SIZE)) > 0)
+
+/**
+ * copy_file - Copies the content from one file descriptor to another.
+ * @from: The source file descriptor.
+ * @to: The destination file descriptor.
+ * @buffer: The buffer used for reading/writing.
+ */
+void copy_file(int from, int to, char *buffer)
 {
-w = write(fd_to, buffer, r);
-if (w == -1)
-{
-dprintf(STDERR_FILENO, "Error: Can't write to %s\n", argv[2]);
-close(fd_from);
-close(fd_to);
-exit(99);
+	ssize_t r, w;
+
+	while ((r = read(from, buffer, BUFFER_SIZE)) > 0)
+	{
+		w = write(to, buffer, r);
+		if (w == -1)
+		{
+			dprintf(STDERR_FILENO, "Error: Can't write to file\n");
+			exit(99);
+		}
+	}
+
+	if (r == -1)
+	{
+		dprintf(STDERR_FILENO, "Error: Can't read from file\n");
+		exit(98);
+	}
 }
-}
-if (r == -1)
-{
-dprintf(STDERR_FILENO, "Error: Can't read from file %s\n", argv[1]);
-close(fd_from);
-close(fd_to);
-exit(98);
-}
-if (close(fd_from) == -1)
-{
-dprintf(STDERR_FILENO, "Error: Can't close fd %d\n", fd_from);
-exit(100);
-}
-if (close(fd_to) == -1)
-{
-dprintf(STDERR_FILENO, "Error: Can't close fd %d\n", fd_to);
-exit(100);
-}
-return (0);
-}
+
