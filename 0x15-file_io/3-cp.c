@@ -1,25 +1,26 @@
+#include "main.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <fcntl.h>
-
-#define BUFFER_SIZE 1024
+#include <unistd.h>
 
 char *create_buffer(void);
 void close_file(int fd);
-void copy_file(int from, int to, char *buffer);
 
 /**
  * main - Entry point of the file copy program.
  * @argc: The number of arguments supplied to the program.
  * @argv: An array of pointers to the arguments.
  *
- * Return: 0 on success, 97 on incorrect number of arguments,
- *         98 on read error, 99 on write error, 100 on close error.
+ * Return: 0 on success.
+ * Description: If the argument count is incorrect - exit code 97.
+ * If file_to cannot be created or written to - exit code 99.
+ * If file_from does not exist or cannot be read - exit code 98.
+ * If file_to or file_from cannot be closed - exit code 100.
  */
 int main(int argc, char *argv[])
 {
-	int from, to;
+	int from, to, r, w;
 	char *buffer;
 
 	if (argc != 3)
@@ -32,16 +33,33 @@ int main(int argc, char *argv[])
 	from = open(argv[1], O_RDONLY);
 	to = open(argv[2], O_CREAT | O_WRONLY | O_TRUNC, 0664);
 
-	if (from == -1 || to == -1)
+	if (from == -1)
 	{
-		dprintf(STDERR_FILENO, "Error: Can't open file\n");
+		dprintf(STDERR_FILENO, "Error: Can't read from file %s\n", argv[1]);
 		free(buffer);
-		close_file(from);
-		close_file(to);
 		exit(98);
 	}
 
-	copy_file(from, to, buffer);
+	do {
+		r = read(from, buffer, 1024);
+
+		if (r == -1)
+		{
+			dprintf(STDERR_FILENO, "Error: Can't read from file %s\n", argv[1]);
+			free(buffer);
+			exit(98);
+		}
+
+		w = write(to, buffer, r);
+
+		if (w == -1)
+		{
+			dprintf(STDERR_FILENO, "Error: Can't write to %s\n", argv[2]);
+			free(buffer);
+			exit(99);
+		}
+
+	} while (r > 0);
 
 	free(buffer);
 	close_file(from);
@@ -51,59 +69,37 @@ int main(int argc, char *argv[])
 }
 
 /**
- * create_buffer - Allocates a buffer for reading/writing.
+ * create_buffer - Allocates 1024 bytes for a buffer.
  *
  * Return: A pointer to the newly-allocated buffer.
+ * Description: If memory allocation fails, exit with code 99.
  */
 char *create_buffer(void)
 {
-	char *buffer = malloc(BUFFER_SIZE);
+	char *buffer = malloc(sizeof(char) * 1024);
 
 	if (buffer == NULL)
 	{
-		dprintf(STDERR_FILENO, "Error: Memory allocation failed\n");
+		dprintf(STDERR_FILENO, "Error: Can't allocate memory for buffer\n");
 		exit(99);
 	}
+
 	return (buffer);
 }
 
 /**
  * close_file - Closes a file descriptor.
  * @fd: The file descriptor to be closed.
+ * Description: If closing the file descriptor fails, exit with code 100.
  */
 void close_file(int fd)
 {
-	if (close(fd) == -1)
+	int c = close(fd);
+
+	if (c == -1)
 	{
 		dprintf(STDERR_FILENO, "Error: Can't close fd %d\n", fd);
 		exit(100);
-	}
-}
-
-/**
- * copy_file - Copies the content from one file descriptor to another.
- * @from: The source file descriptor.
- * @to: The destination file descriptor.
- * @buffer: The buffer used for reading/writing.
- */
-void copy_file(int from, int to, char *buffer)
-{
-	ssize_t r, w;
-
-	while ((r = read(from, buffer, BUFFER_SIZE)) > 0)
-	{
-		w = write(to, buffer, r);
-		if (w == -1)
-		{
-			dprintf(STDERR_FILENO, "Error: Can't write to file\n");
-			exit(99);
-		}
-	}
-
-	if (r == -1)
-	{
-		dprintf(STDERR_FILENO, "Error: Can't read from file\n");
-		exit(98);
 	}
 }
 
